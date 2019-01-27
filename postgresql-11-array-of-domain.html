@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+      <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html" charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+
+
+  <title>Postgresql 11: Arrays of&nbsp;Domain</title>
+
+
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="origin" />
+  <meta name="generator" content="Pelican" />
+  <link href="." rel="canonical" />
+
+  <!-- Feed -->
+
+  <link href="./theme/css/style.css" type="text/css" rel="stylesheet" />
+
+  <!-- Code highlight color scheme -->
+      <link href="./theme/css/code_blocks/github.css" rel="stylesheet">
+
+
+  <!-- Custom fonts -->
+  <link href='https://fonts.googleapis.com/css?family=Montserrat:400,300' rel='stylesheet' type='text/css' />
+  <link href="https://fonts.googleapis.com/css?family=Lato" rel="stylesheet" type="text/css" />
+
+  <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+  <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+  <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+    <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+  <![endif]-->
+
+
+    <link href="./postgresql-11-array-of-domain.html" rel="canonical" />
+
+        <meta name="description" content="Postgresql 11 now supports arrays of domains, but the results may surprise your application code.">
+
+        <meta name="author" content="James Robinson">
+
+        <meta name="tags" content="pelican">
+        <meta name="tags" content="publishing">
+
+        <meta property="og:locale" content="" />
+    <meta property="og:site_name" content="James on Programming" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="James on Programming" />
+    <meta property="og:description" content="View the blog." />
+    <meta property="og:url" content="." />
+      <meta property="og:image" content="./static/moonman.jpeg" />
+
+  <meta property="og:type" content="article">
+            <meta property="article:author" content="./author/james-robinson.html">
+  <meta property="og:url" content="./postgresql-11-array-of-domain.html">
+  <meta property="og:title" content="Postgresql 11: Arrays of&nbsp;Domain">
+  <meta property="article:published_time" content="2019-01-26 00:00:00-05:00">
+            <meta property="og:description" content="Postgresql 11 now supports arrays of domains, but the results may surprise your application code.">
+
+            <meta property="og:image" content="./static/moonman.jpeg">
+</head>
+<!-- TODO : Body class -->
+<body class="home-template">
+
+<nav id="menu">
+  <a class="close-button">Close</a>
+  <div class="nav-wrapper">
+    <p class="nav-label">Menu</p>
+    <ul>
+
+
+    </ul>
+  </div>
+</nav>
+    <!-- Progressbar -->
+    <div class="progress-container">
+        <span class="progress-bar"></span>
+    </div>
+
+    <!-- Page Header -->
+    <!-- Set your background image for this header on the line below. -->
+    <header id="post-header" class="has-cover">
+      <div class="inner">
+        <nav id="navigation">
+            <span id="home-button" class="nav-button">
+                <a class="home-button" href="." title="Home"><i class="ic ic-arrow-left"></i> Home</a>
+            </span>
+          <span id="menu-button" class="nav-button">
+            <a class="menu-button"><i class="ic ic-menu"></i> Menu</a>
+          </span>
+        </nav>
+        <h1 class="post-title">Postgresql 11: Arrays of&nbsp;Domain</h1>
+        <!-- TODO : Proper class for headline -->
+        <span class="post-meta">
+                <a href="./author/james-robinson.html">James robinson</a>
+            | <time datetime="Sat 26 January 2019">Sat 26 January 2019</time>
+        </span>
+        <!-- TODO : Modified check -->
+            <span class="post-meta"> | Updated on Sat 26 January 2019</span>
+        
+            <div class="post-cover cover" style="background-image: url('static/moonman.jpeg')">            
+        
+      </div>
+    </header>    
+
+  <section id="wrapper">
+    <a class="hidden-close"></a>
+
+    <!-- Post content -->
+    <main class="content" role="main">
+        <article class="post">
+        <div class="inner">
+            <section class="post-content">
+                <h1>Arrays of&nbsp;Domain</h1>
+<p>One subtle new feature in PostgreSQL 11 is <a href="https://www.postgresql.org/docs/11/release-11.html#id-1.11.6.6.5.6">arrays of domain types</a>. I say subtle, because you may not have noticed that they
+were not supported before, or perhaps, as was my experience, your first attempt to make use of an
+array over a domain happened to be with version 11, and it &#8220;just&nbsp;worked.&#8221;</p>
+<p>If you share the philosophy to have the database do as much as reasonably possible to ensure
+data consistency (<em>and I think you should</em>), then you know that domains are a great tool to that end,
+letting you express a set of constraints in one place, then reference them in as many tables or
+datatypes as needed with much less repetition or copy/paste&nbsp;errors.</p>
+<p>For example, given this simplified subset of a schema making reference to a domain <code>required_text</code> over <code>text</code>
+ensuring that the value is nonempty, not null, as well as has no leading / trailing&nbsp;whitespace:</p>
+<div class="highlight"><pre><span></span>create domain required_text text
+    check (trim(value) = value
+        and length(value) &gt; 0) not null;
+
+create table email_address
+(
+    id serial primary key,
+    address required_text
+        check (address like &#39;%@%&#39;)
+);
+
+create table email(
+    id serial primary key,
+    sender_id int
+        references email_address,
+    subject text
+    --  ...
+);
+
+create table email_recipient (
+    email_id int not null
+        references email,
+    recipient_id int not null
+        references email_address,
+    primary key (email_id, recipient_id)
+);
+</pre></div>
+
+
+<p>PostgreSQL implements domains using its flexible and user-expandable type system, where each type
+known to the database exists as a row in system catalog table
+<a href="https://www.postgresql.org/docs/11/catalog-pg-type.html"><code>pg_catalog.pg_type</code></a>. The primary key for this table
+is an integer-ish field/type named <code>oid</code>. The oid value corresponding to a type&#8217;s <code>pg_type</code> row is usually
+<em>(ah, sweet foreshadowing)</em> how a PostgreSQL server describes a result set&#8217;s column types in the
+client/server protocol (namely within the <a href="https://www.postgresql.org/docs/11/protocol-flow.html#id-1.10.5.7.4"><code>RowDescription</code></a> message) which indicates the PostgerSQL-side datatypes, hinting
+the client&#8217;s driver as to what client-side types and/or parsing logic to use to decode the result set&#8217;s&nbsp;values.</p>
+<p>Normal / vanilla scalar types are described in <code>pg_type</code> by rows with the <code>typtype</code> column set to &#8216;b&#8217;
+for &#8220;base type.&#8221; Domains
+are described with a &#8216;d&#8217;, for, well, <em>domain</em>. Arrays are <em>also</em> modeled as separate types in the system catalog,
+described with <code>typcategory</code> value <code>A</code> for &#8220;Array&#8221; and through having their oid referenced by
+their scalar&#8217;s row in column <code>typarray</code>.
+Convention is that the array type&#8217;s name will be the same as the scalar type&#8217;s, but with an underscore&nbsp;prepended.</p>
+<p>All that&#8217;s a mouthful. Let&#8217;s just&nbsp;look:</p>
+<div class="highlight"><pre><span></span>scratch=# select
+    oid, typname, typtype, typcategory, typarray, typbasetype
+    from pg_type
+    where typname in (&#39;text&#39;, &#39;required_text&#39;, &#39;_text&#39;, &#39;_required_text&#39;);
+
+   oid   |    typname     | typtype | typcategory | typarray | typbasetype
+---------+----------------+---------+-------------+----------+-------------
+      25 | text           | b       | S           |     1009 |           0
+    1009 | _text          | b       | A           |        0 |           0
+ 2741346 | required_text  | d       | S           |  2741345 |          25
+ 2741345 | _required_text | b       | A           |        0 |           0
+(4 rows)
+</pre></div>
+
+
+<p>Here we see a subset of the <code>pg_type</code> descriptions for types <code>text</code> and our domain
+<code>required_text</code> plus their corresponding array types. The <code>required_text</code> domain
+is described with <code>typtype</code> value &#8216;d,&#8217; and references its base type&#8217;s oid in the
+<code>typbasetype</code> column. Being scalars supporting arrays, they name their array
+types by oid in the <code>typarray</code> column: 1009 and 2741345.  The array types <code>_text</code>
+and <code>_required_text</code> are marked as arrays according to <code>typcategory</code> value &#8216;A&#8217;
+(and through other <code>pg_type</code> columns we&#8217;re not interested in for the sake of this
+post). The oids for <code>required_text</code> and <code>_required_test</code> will
+be based on the state of your database cluster when you actually run the code, whereas
+the values for <code>text</code> and <code>_text</code>, being builtins, are well known and set up by <code>initdb</code> when you
+initialized your&nbsp;cluster.</p>
+<p>Given the above schema, you may have an overview query projecting both the sender
+and all recipients by address along the lines&nbsp;of:</p>
+<div class="highlight"><pre><span></span>select
+    em.id,
+    em.subject,
+    sa.address as sender,
+    (select array_agg(ea.address)
+            from email_recipient e_r
+            join email_address ea
+                on (e_r.recipient_id = ea.id)
+            where e_r.email_id = em.id)
+        as recipients
+    from email em
+        join email_address sa
+            on em.sender_id = sa.id
+;
+</pre></div>
+
+
+<p>whose results may be something&nbsp;like:</p>
+<div class="highlight"><pre><span></span> id |      subject      |           sender           |                 recipients
+----+-------------------+----------------------------+--------------------------------------------
+  1 | Anyone Out there? | joe@foo.com                | {mary@jane.com,majortom@space.control.com}
+  2 | Yup!              | majortom@space.control.com | {joe@foo.com,mary@jane.com}
+</pre></div>
+
+
+<p>Excellent! Prior versions of PostgreSQL would tell&nbsp;you:</p>
+<div class="highlight"><pre><span></span>    ERROR:  could not find array type for data type required_text
+</pre></div>
+
+
+<p>which you&#8217;d then probably solve through downcasting <code>ea.address</code> to&nbsp;text:</p>
+<div class="highlight"><pre><span></span>...
+    (select array_agg(ea.address::text)
+...
+</pre></div>
+
+
+<p>to end up with a vanilla array of text and just move on. But no more need in <span class="caps">PG</span>&nbsp;11!</p>
+<p>But when embed this same query into a client application, (here I will use python and the psycopg2 driver), you
+are then met with a novel surprise &#8212;- your application code does not recieve a beautiful array or list of strings
+like it would have if you had done that <span class="caps">SQL</span>-side downcast, but instead probably just a single string which includes
+both the array delimiting <code>{</code> and <code>}</code> characters as well as the interior&nbsp;commas:</p>
+<div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">psycopg2</span>
+
+<span class="n">con</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;dbname=scratch&#39;</span><span class="p">)</span>
+<span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+
+<span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s1">&#39;&#39;&#39;</span>
+<span class="s1">select</span>
+<span class="s1">    em.id,</span>
+<span class="s1">    em.subject,</span>
+<span class="s1">    sa.address as sender,</span>
+<span class="s1">    (select array_agg(ea.address)</span>
+<span class="s1">            from email_recipient e_r</span>
+<span class="s1">            join email_address ea</span>
+<span class="s1">                on (e_r.recipient_id = ea.id)</span>
+<span class="s1">            where e_r.email_id = em.id)</span>
+<span class="s1">        as recipients</span>
+<span class="s1">    from email em</span>
+<span class="s1">        join email_address sa</span>
+<span class="s1">            on em.sender_id = sa.id</span>
+<span class="s1">&#39;&#39;&#39;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cur</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+
+<span class="n">cur</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="n">con</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+
+
+<p>Results:</p>
+<div class="highlight"><pre><span></span>$ python /tmp/test.py
+<span class="o">(</span><span class="m">1</span>, <span class="s1">&#39;Anyone Out there?&#39;</span>, <span class="s1">&#39;joe@foo.com&#39;</span>, <span class="s1">&#39;{mary@jane.com,majortom@space.control.com}&#39;</span><span class="o">)</span>
+<span class="o">(</span><span class="m">2</span>, <span class="s1">&#39;Yup!&#39;</span>, <span class="s1">&#39;majortom@space.control.com&#39;</span>, <span class="s1">&#39;{joe@foo.com,mary@jane.com}&#39;</span><span class="o">)</span>
+</pre></div>
+
+
+<p>Boo! What&#8217;s with those big strings at the end instead of a list of individual addresses?
+What&#8217;s going on? This isn&#8217;t helpful at&nbsp;all!</p>
+<h1>Answer</h1>
+<p>Ends up what is happening is a difference in how PostgreSQL 11 currently describes results containing
+arrays of domain versus results containing scalar domain values. Scalar domain values are described in
+result sets using <em>the underlying base type&#8217;s oid</em>, whilst the array of domain is being described
+with its <em>unique oid</em>, which your database driver and application most likely do not have a mapping
+to a native type for&nbsp;(yet).</p>
+<p>Rephrased, the server is performing <em>type erasure</em> in the case of
+scalar domains in the client/server protocol so as to have their projected values be indistinguishable
+from those of the base type. This is has been done since for ages, since the inception of
+PostgreSQL&#8217;s support for domains, for the ease of client applications / drivers who need not concern
+themselves / differentiate between domain values and the underlying base types <em>at the client application
+side</em>.</p>
+<p>Let&#8217;s peek into how these results are being presented by replacing the for loop
+over the results with one over the cursor&#8217;s
+<a href="http://initd.org/psycopg/docs/cursor.html#cursor.description">description</a>:</p>
+<div class="highlight"><pre><span></span>...
+for column in cur.description:
+    print(&#39;Name: %s / oid: %d&#39; % (column.name, column.type_code))
+...
+</pre></div>
+
+
+<p>and we&nbsp;see:</p>
+<div class="highlight"><pre><span></span>$ python /tmp/test.py
+Name: id / oid: <span class="m">23</span>
+Name: subject / oid: <span class="m">25</span>
+Name: sender / oid: <span class="m">25</span>
+Name: recipients / oid: <span class="m">2741345</span>
+</pre></div>
+
+
+<p>Interesting! The scalar domain column <code>sender</code> is <em>not</em> described with the oid we observed in the <code>pg_types</code> table
+(<em>2741346</em>), but instead is presented to the client with the oid of its <em>base type, 25, corresponding to <code>text</code></em>.
+The equivalent conversion is <em>not</em> currently done for arrays of domains &#8212; they&#8217;re presented back to the
+client with their unadulterated
+<code>array of domain</code> type, which, out of the box, your database client most likely won&#8217;t know how to handle. Psycopg2
+defaults to presenting the value as a string when it doesn&#8217;t know otherwise, so a single string with curlybraces and
+commas is handed back to the application&nbsp;code.</p>
+<p>In the next post, I&#8217;ll show how psycopg2&#8217;s extensions module affords registering handlers for
+custom array types so that we won&#8217;t have to keep downcasting, and how to do so in a maintenance-free
+way which will survive the oids of your custom types changing, say through <code>pg_dump</code> / <code>pg_restore</code>
+cycles.</p>
+            </section>
+
+            <section class="post-info">
+                <div class="post-share">
+                    <a class="twitter" href="https://twitter.com/share?text=Postgresql 11: Arrays of&nbsp;Domain&amp;url=./postgresql-11-array-of-domain.html" onclick="window.open(this.href, 'twitter-share', 'width=550,height=235');return false;">
+                    <i class="ic ic-twitter"></i><span class="hidden">Twitter</span>
+                    </a>
+                    <a class="facebook" href="https://www.facebook.com/sharer/sharer.php?u=./postgresql-11-array-of-domain.html" onclick="window.open(this.href, 'facebook-share','width=580,height=296');return false;">
+                    <i class="ic ic-facebook"></i><span class="hidden">Facebook</span>
+                    </a>
+                    <a class="googleplus" href="https://plus.google.com/share?url=./postgresql-11-array-of-domain.html" onclick="window.open(this.href, 'google-plus-share', 'width=490,height=530');return false;">
+                    <i class="ic ic-googleplus"></i><span class="hidden">Google+</span>
+                    </a>
+                    <div class="clear"></div>
+                </div>
+
+                <aside class="post-tags">
+<a href="./tag/pelican.html">pelican</a><a href="./tag/publishing.html">publishing</a>                </aside>
+
+                <div class="clear"></div>
+
+ 
+
+                </section>
+
+
+                <aside class="post-nav">
+                    <div class="clear"></div>
+                </aside>
+
+            </div>
+        </article>
+    </main>
+      <!-- TODO : Body class -->
+    <div id="body-class" style="display: none;" class=""></div>
+
+
+  <script type="text/javascript" src="./theme/js/script.js"></script>
+
+</body>
+</html>
