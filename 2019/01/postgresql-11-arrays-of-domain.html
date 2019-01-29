@@ -14,14 +14,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="origin" />
   <meta name="generator" content="Pelican" />
-  <link href="." rel="canonical" />
+  <link href="../.." rel="canonical" />
 
   <!-- Feed -->
 
-  <link href="./theme/css/style.css" type="text/css" rel="stylesheet" />
+  <link href="../../theme/css/style.css" type="text/css" rel="stylesheet" />
 
   <!-- Code highlight color scheme -->
-      <link href="./theme/css/code_blocks/github.css" rel="stylesheet">
+      <link href="../../theme/css/code_blocks/github.css" rel="stylesheet">
 
 
   <!-- Custom fonts -->
@@ -36,31 +36,29 @@
   <![endif]-->
 
 
-    <link href="./postgresql-11-array-of-domain.html" rel="canonical" />
+    <link href="../../2019/01/postgresql-11-arrays-of-domain.html" rel="canonical" />
 
-        <meta name="description" content="Postgresql 11 now supports arrays of domains, but the results may surprise your application code.">
+        <meta name="description" content="Modified: 2019-01-28 Tags: Psycopg2, PostgreSQL Slug: postgresql-11-array-of-domain Authors: James Robinson Summary: Postgresql 11 now...">
 
         <meta name="author" content="James Robinson">
 
-        <meta name="tags" content="pelican">
-        <meta name="tags" content="publishing">
 
         <meta property="og:locale" content="" />
     <meta property="og:site_name" content="James on Programming" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="James on Programming" />
     <meta property="og:description" content="View the blog." />
-    <meta property="og:url" content="." />
-      <meta property="og:image" content="./static/moonman.jpeg" />
+    <meta property="og:url" content="../.." />
+      <meta property="og:image" content="../../static/moonman.jpeg" />
 
   <meta property="og:type" content="article">
-            <meta property="article:author" content="./author/james-robinson.html">
-  <meta property="og:url" content="./postgresql-11-array-of-domain.html">
+            <meta property="article:author" content="../../author/james-robinson.html">
+  <meta property="og:url" content="../../2019/01/postgresql-11-arrays-of-domain.html">
   <meta property="og:title" content="Postgresql 11: Arrays of&nbsp;Domain">
-  <meta property="article:published_time" content="2019-01-26 00:00:00-05:00">
-            <meta property="og:description" content="Postgresql 11 now supports arrays of domains, but the results may surprise your application code.">
+  <meta property="article:published_time" content="2019-01-29 00:00:00-05:00">
+            <meta property="og:description" content="Modified: 2019-01-28 Tags: Psycopg2, PostgreSQL Slug: postgresql-11-array-of-domain Authors: James Robinson Summary: Postgresql 11 now...">
 
-            <meta property="og:image" content="./static/moonman.jpeg">
+            <meta property="og:image" content="../../static/moonman.jpeg">
 </head>
 <!-- TODO : Body class -->
 <body class="home-template">
@@ -86,7 +84,7 @@
       <div class="inner">
         <nav id="navigation">
             <span id="home-button" class="nav-button">
-                <a class="home-button" href="." title="Home"><i class="ic ic-arrow-left"></i> Home</a>
+                <a class="home-button" href="../.." title="Home"><i class="ic ic-arrow-left"></i> Home</a>
             </span>
           <span id="menu-button" class="nav-button">
             <a class="menu-button"><i class="ic ic-menu"></i> Menu</a>
@@ -95,11 +93,10 @@
         <h1 class="post-title">Postgresql 11: Arrays of&nbsp;Domain</h1>
         <!-- TODO : Proper class for headline -->
         <span class="post-meta">
-                <a href="./author/james-robinson.html">James robinson</a>
-            | <time datetime="Sat 26 January 2019">Sat 26 January 2019</time>
+                <a href="../../author/james-robinson.html">James robinson</a>
+            | <time datetime="Tue 29 January 2019">Tue 29 January 2019</time>
         </span>
         <!-- TODO : Modified check -->
-            <span class="post-meta"> | Updated on Sat 26 January 2019</span>
         
             <div class="post-cover cover" style="background-image: url('static/moonman.jpeg')">            
         
@@ -114,7 +111,12 @@
         <article class="post">
         <div class="inner">
             <section class="post-content">
-                <h1>Arrays of&nbsp;Domain</h1>
+                <h1>Modified:&nbsp;2019-01-28</h1>
+<p>Tags: Psycopg2, PostgreSQL
+Slug: postgresql-11-array-of-domain
+Authors: James Robinson
+Summary: Postgresql 11 now supports arrays of domains, but query projections may surprise your application code. This can be worked around in Python&#8217;s psycopg2 driver by registering custom type&nbsp;adaptors.</p>
+<h1>Arrays of&nbsp;Domain</h1>
 <p>One subtle new feature in PostgreSQL 11 is <a href="https://www.postgresql.org/docs/11/release-11.html#id-1.11.6.6.5.6">arrays of domain types</a>. I say subtle, because you may not have noticed that they
 were not supported before, or perhaps, as was my experience, your first attempt to make use of an
 array over a domain happened to be with version 11, and it &#8220;just&nbsp;worked.&#8221;</p>
@@ -132,6 +134,7 @@ create table email_address
 (
     id serial primary key,
     address required_text
+        -- Not production quality constraint right here ...
         check (address like &#39;%@%&#39;)
 );
 
@@ -193,6 +196,9 @@ post). The oids for <code>required_text</code> and <code>_required_test</code> w
 be based on the state of your database cluster when you actually run the code, whereas
 the values for <code>text</code> and <code>_text</code>, being builtins, are well known and set up by <code>initdb</code> when you
 initialized your&nbsp;cluster.</p>
+<p>Array types don&#8217;t have a corresponding typarray value, because, well, PostgreSQL
+arrays are inherently multi-dimensional, and we don&#8217;t want to have infinite
+recursion in the system&nbsp;catalog.</p>
 <p>Given the above schema, you may have an overview query projecting both the sender
 and all recipients by address along the lines&nbsp;of:</p>
 <div class="highlight"><pre><span></span>select
@@ -312,29 +318,150 @@ The equivalent conversion is <em>not</em> currently done for arrays of domains &
 client with their unadulterated
 <code>array of domain</code> type, which, out of the box, your database client most likely won&#8217;t know how to handle. Psycopg2
 defaults to presenting the value as a string when it doesn&#8217;t know otherwise, so a single string with curlybraces and
-commas is handed back to the application&nbsp;code.</p>
-<p>In the next post, I&#8217;ll show how psycopg2&#8217;s extensions module affords registering handlers for
-custom array types so that we won&#8217;t have to keep downcasting, and how to do so in a maintenance-free
-way which will survive the oids of your custom types changing, say through <code>pg_dump</code> / <code>pg_restore</code>
-cycles.</p>
+commas is handed back to the application code. I&#8217;ve brought this arguable asymmetry in how PostgreSQL treats
+returning domains to client applications up
+<a href="https://www.postgresql.org/message-id/50CCC519-6F51-470A-872B-8002F54AB92E%40jlr-photo.com">on pgsql-hackers</a>,
+and it seems it will stay this way at least for PostgreSQL&nbsp;11.</p>
+<p>Fortunately, psycopg2 lets us register new type adaptors, and has a convienence function to create a type
+adaptor for an array type based upon the the type adaptor for the corresponding scalar type. So, with some
+lookups in both the system catalog as well as within the psycopg2 module, we can craft a flexible
+auto-registration function which introspects into our database to see what domains we have, and to
+auto-register their array type&#8217;s oid to be handled equivalently to that of an array of the domain&#8217;s
+base type. We&#8217;ve only created a domain over text, but the following ought to handle domains over
+int or any other of the core PostgreSQL&nbsp;types.</p>
+<div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">psycopg2</span><span class="o">,</span> <span class="nn">psycopg2.extras</span><span class="o">,</span> <span class="nn">psycopg2.extensions</span>
+
+
+<span class="k">def</span> <span class="nf">register_domain_array_types</span><span class="p">(</span><span class="n">con</span><span class="p">):</span>
+
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span><span class="n">cursor_factory</span><span class="o">=</span><span class="n">psycopg2</span><span class="o">.</span><span class="n">extras</span><span class="o">.</span><span class="n">NamedTupleCursor</span><span class="p">)</span>
+    <span class="c1"># Learn user-created domain names, their array type&#39;s oids, their</span>
+    <span class="c1"># base type&#39;s oid</span>
+    <span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s1">&#39;&#39;&#39;</span>
+<span class="s1">        select</span>
+<span class="s1">            pgt.typname,        -- Name of this domain type,</span>
+<span class="s1">            pgt.typbasetype,    -- its base type&#39;s oid,</span>
+<span class="s1">                                -- base type&#39;s name ...</span>
+<span class="s1">            pgt_base.typname as base_typname,</span>
+<span class="s1">            pgt.typarray       -- and its array type&#39;s oid</span>
+
+<span class="s1">        from pg_catalog.pg_type pgt</span>
+<span class="s1">                -- Dig out the base type for the domain ...</span>
+<span class="s1">                join pg_catalog.pg_type pgt_base</span>
+<span class="s1">                    on (pgt.typbasetype = pgt_base.oid)</span>
+<span class="s1">        where</span>
+<span class="s1">            -- Domains only please!</span>
+<span class="s1">            pgt.typtype = &#39;d&#39;</span>
+<span class="s1">        &#39;&#39;&#39;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cur</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
+        <span class="c1"># Fetch the psycopg type adaptor for the domain&#39;s base type&#39;s oid.</span>
+        <span class="n">base_type_adaptor</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">string_types</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">typbasetype</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">base_type_adaptor</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Unknown type adaptor for </span><span class="si">%s</span><span class="s1">&#39;</span>
+                            <span class="s1">&#39; for domain array type </span><span class="si">%s</span><span class="s1">&#39;</span>
+                            <span class="o">%</span> <span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">base_typname</span><span class="p">,</span> <span class="n">c</span><span class="o">.</span><span class="n">typname</span><span class="p">))</span>
+
+        <span class="c1"># Create new psycopg-side array type(converter) ...</span>
+        <span class="n">array_type</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">new_array_type</span><span class="p">(</span>
+                        <span class="c1"># oids to trigger use of this typecoverter.</span>
+                        <span class="c1"># The array&#39;s oid only please.</span>
+                        <span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">typarray</span><span class="p">,),</span>
+                        <span class="c1"># Name for this type: let&#39;s just tack &#39;[]&#39;</span>
+                        <span class="c1"># onto tbe domain&#39;s name</span>
+                        <span class="n">c</span><span class="o">.</span><span class="n">typname</span> <span class="o">+</span> <span class="s1">&#39;[]&#39;</span><span class="p">,</span>
+                        <span class="c1"># Typeconverter for the scalar type. Let&#39;s use the one for the</span>
+                        <span class="c1"># domain&#39;s base type!</span>
+                        <span class="n">base_type_adaptor</span><span class="p">)</span>
+
+        <span class="c1"># ... and then register it. Done!</span>
+        <span class="n">psycopg2</span><span class="o">.</span><span class="n">extensions</span><span class="o">.</span><span class="n">register_type</span><span class="p">(</span><span class="n">array_type</span><span class="p">)</span>
+
+    <span class="n">cur</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+
+
+<p>So, after making a call to that routine, and expecting the <code>recipients</code> projection to now be a list of&nbsp;string:</p>
+<div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">psycopg2</span><span class="o">,</span> <span class="nn">psycopg2.extras</span><span class="o">,</span> <span class="nn">psycopg2.extensions</span>
+
+<span class="k">def</span> <span class="nf">register_domain_array_types</span><span class="p">(</span><span class="n">con</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="n">con</span> <span class="o">=</span> <span class="n">psycopg2</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;dbname=scratch&#39;</span><span class="p">)</span>
+<span class="n">register_domain_array_types</span><span class="p">(</span><span class="n">con</span><span class="p">)</span>
+
+<span class="n">cur</span> <span class="o">=</span> <span class="n">con</span><span class="o">.</span><span class="n">cursor</span><span class="p">(</span><span class="n">cursor_factory</span><span class="o">=</span><span class="n">psycopg2</span><span class="o">.</span><span class="n">extras</span><span class="o">.</span><span class="n">NamedTupleCursor</span><span class="p">)</span>
+
+<span class="n">cur</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s1">&#39;&#39;&#39;</span>
+<span class="s1">select</span>
+<span class="s1">    em.id,</span>
+<span class="s1">    em.subject,</span>
+<span class="s1">    sa.address as sender,</span>
+<span class="s1">    (select array_agg(ea.address)</span>
+<span class="s1">            from email_recipient e_r</span>
+<span class="s1">            join email_address ea</span>
+<span class="s1">                on (e_r.recipient_id = ea.id)</span>
+<span class="s1">            where e_r.email_id = em.id)</span>
+<span class="s1">        as recipients</span>
+<span class="s1">    from email em</span>
+<span class="s1">        join email_address sa</span>
+<span class="s1">            on em.sender_id = sa.id</span>
+<span class="s1">&#39;&#39;&#39;</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">cur</span><span class="p">:</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">ea</span> <span class="ow">in</span> <span class="n">row</span><span class="o">.</span><span class="n">recipients</span><span class="p">:</span>
+        <span class="k">print</span><span class="p">(</span><span class="s1">&#39;    Recipient: </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">ea</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+
+<span class="n">cur</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<span class="n">con</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</pre></div>
+
+
+<p>Now gives us something we&nbsp;like:</p>
+<div class="highlight"><pre><span></span>$ python array_type_example.py
+Record<span class="o">(</span><span class="nv">id</span><span class="o">=</span><span class="m">1</span>, <span class="nv">subject</span><span class="o">=</span><span class="s1">&#39;Anyone Out there?&#39;</span>, <span class="nv">sender</span><span class="o">=</span><span class="s1">&#39;joe@foo.com&#39;</span>, <span class="nv">recipients</span><span class="o">=[</span><span class="s1">&#39;mary@jane.com&#39;</span>, <span class="s1">&#39;majortom@space.control.com&#39;</span><span class="o">])</span>
+    Recipient: mary@jane.com
+    Recipient: majortom@space.control.com
+
+Record<span class="o">(</span><span class="nv">id</span><span class="o">=</span><span class="m">2</span>, <span class="nv">subject</span><span class="o">=</span><span class="s1">&#39;Yup!&#39;</span>, <span class="nv">sender</span><span class="o">=</span><span class="s1">&#39;majortom@space.control.com&#39;</span>, <span class="nv">recipients</span><span class="o">=[</span><span class="s1">&#39;joe@foo.com&#39;</span>, <span class="s1">&#39;mary@jane.com&#39;</span><span class="o">])</span>
+    Recipient: joe@foo.com
+    Recipient: mary@jane.com
+
+$
+</pre></div>
+
+
+<p>So, research your own driver&#8217;s custom type registration capability, and
+make use of a post-connection setup function to scrape the system catalog
+for domains and their array type&#8217;s oids to make full use of domain arrays
+at the client&nbsp;side!</p>
+<p>Next time I&#8217;ll augment and generalize this setup function to educate
+psycopg2 about custom composite types and show how useful they can be
+when writing microservices which emit&nbsp;json.</p>
+<p>References:</p>
+<ul>
+<li><a href="http://initd.org/psycopg/docs/extensions.html#psycopg2.extensions.new_array_type">Documentation for psycopg2 extensions <code>new_array_type()</code> and <code>register_type()</code>.</a></li>
+<li><a href="https://www.postgresql.org/docs/11/catalog-pg-type.html">PostgreSQL 11&#8217;s <code>pg_type</code> system catalog definition and&nbsp;documentation.</a></li>
+</ul>
             </section>
 
             <section class="post-info">
                 <div class="post-share">
-                    <a class="twitter" href="https://twitter.com/share?text=Postgresql 11: Arrays of&nbsp;Domain&amp;url=./postgresql-11-array-of-domain.html" onclick="window.open(this.href, 'twitter-share', 'width=550,height=235');return false;">
+                    <a class="twitter" href="https://twitter.com/share?text=Postgresql 11: Arrays of&nbsp;Domain&amp;url=../../2019/01/postgresql-11-arrays-of-domain.html" onclick="window.open(this.href, 'twitter-share', 'width=550,height=235');return false;">
                     <i class="ic ic-twitter"></i><span class="hidden">Twitter</span>
                     </a>
-                    <a class="facebook" href="https://www.facebook.com/sharer/sharer.php?u=./postgresql-11-array-of-domain.html" onclick="window.open(this.href, 'facebook-share','width=580,height=296');return false;">
+                    <a class="facebook" href="https://www.facebook.com/sharer/sharer.php?u=../../2019/01/postgresql-11-arrays-of-domain.html" onclick="window.open(this.href, 'facebook-share','width=580,height=296');return false;">
                     <i class="ic ic-facebook"></i><span class="hidden">Facebook</span>
                     </a>
-                    <a class="googleplus" href="https://plus.google.com/share?url=./postgresql-11-array-of-domain.html" onclick="window.open(this.href, 'google-plus-share', 'width=490,height=530');return false;">
+                    <a class="googleplus" href="https://plus.google.com/share?url=../../2019/01/postgresql-11-arrays-of-domain.html" onclick="window.open(this.href, 'google-plus-share', 'width=490,height=530');return false;">
                     <i class="ic ic-googleplus"></i><span class="hidden">Google+</span>
                     </a>
                     <div class="clear"></div>
                 </div>
 
-                <aside class="post-tags">
-<a href="./tag/pelican.html">pelican</a><a href="./tag/publishing.html">publishing</a>                </aside>
 
                 <div class="clear"></div>
 
@@ -354,7 +481,7 @@ cycles.</p>
     <div id="body-class" style="display: none;" class=""></div>
 
 
-  <script type="text/javascript" src="./theme/js/script.js"></script>
+  <script type="text/javascript" src="../../theme/js/script.js"></script>
 
 </body>
 </html>
