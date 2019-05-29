@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>James on Programming</title><link href="https://jlrobins.github.io/" rel="alternate"></link><link href="https://jlrobins.github.io/feeds/all.atom.xml" rel="self"></link><id>https://jlrobins.github.io/</id><updated>2019-01-29T00:00:00-05:00</updated><entry><title>Postgresql 11: Domain Array Types</title><link href="https://jlrobins.github.io/2019/01/postgresql-11-array-of-domain.html" rel="alternate"></link><published>2019-01-29T00:00:00-05:00</published><updated>2019-01-29T00:00:00-05:00</updated><author><name>James Robinson</name></author><id>tag:jlrobins.github.io,2019-01-29:/2019/01/postgresql-11-array-of-domain.html</id><summary type="html">&lt;p&gt;Postgresql 11 now supports arrays of domains, but query projections may surprise your application code. This can be worked around in Python&amp;#8217;s psycopg2 driver by registering custom type&amp;nbsp;adaptors.&lt;/p&gt;</summary><content type="html">&lt;h1&gt;Arrays of&amp;nbsp;Domain&lt;/h1&gt;
+&lt;p&gt;One subtle new feature in PostgreSQL 11 is &lt;a href="https://www.postgresql.org/docs/11/release-11.html#id-1.11.6.6.5.6"&gt;domain type arrays&lt;/a&gt;. I say subtle, because you may not have noticed that they
+were not supported before, or perhaps, as was my experience, your first attempt to make use of an
+array over a domain happened to be with version 11, and it &amp;#8220;just&amp;nbsp;worked.&amp;#8221;&lt;/p&gt;
+&lt;p&gt;If you share the philosophy to have the database do as much as reasonably possible to ensure
+data consistency (&lt;em&gt;and I think you should&lt;/em&gt;), then you know that domains are a great tool to that end,
+letting you express a set of constraints in one place, then reference them in as many tables or
+datatypes as needed with much less repetition or copy/paste&amp;nbsp;errors.&lt;/p&gt;
+&lt;p&gt;For example, given this simplified subset of a schema making reference to a domain &lt;code&gt;required_text&lt;/code&gt; over &lt;code&gt;text&lt;/code&gt;
+ensuring that the value is nonempty, not null, as well as has no leading / trailing&amp;nbsp;whitespace:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;create domain required_text text
+    check (trim(value) = value
+        and length(value) &amp;gt; 0) not null;
+
+create table email_address
+(
+    id serial primary key,
+    address required_text
+        -- Not a production quality email constraint, but...
+        check (address like &amp;#39;%@%&amp;#39;)
+);
+
+create table email(
+    id serial primary key,
+    sender_id int
+        references email_address,
+    subject text
+    --  ...
+);
+
+create table email_recipient (
+    email_id int not null
+        references email,
+    recipient_id int not null
+        references email_address,
+    primary key (email_id, recipient_id)
+);
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;PostgreSQL implements domains using its flexible and user-expandable type system, where each type
+known to the database exists as a row in system catalog table
+&lt;a href="https://www.postgresql.org/docs/11/catalog-pg-type.html"&gt;&lt;code&gt;pg_catalog.pg_type&lt;/code&gt;&lt;/a&gt;. The primary key for this table
+is an integer-ish field/type named &lt;code&gt;oid&lt;/code&gt;. The oid value corresponding to a type&amp;#8217;s &lt;code&gt;pg_type&lt;/code&gt; row is usually
+&lt;em&gt;(ah, sweet foreshadowing)&lt;/em&gt; how a PostgreSQL server describes a result set&amp;#8217;s column types in the
+client/server protocol with the &lt;a href="https://www.postgresql.org/docs/11/protocol-flow.html#id-1.10.5.7.4"&gt;&lt;code&gt;RowDescription&lt;/code&gt;&lt;/a&gt; message which indicates the PostgerSQL-side datatypes, informing
+the client&amp;#8217;s driver as to what client-side types and/or parsing logic to use to decode the result set&amp;#8217;s&amp;nbsp;values.&lt;/p&gt;
+&lt;p&gt;Basic scalar types are described in the system catalog&amp;#8217;s &lt;code&gt;pg_type&lt;/code&gt; table by rows with &lt;code&gt;typtype&lt;/code&gt; set to &amp;#8216;b&amp;#8217;
+for &amp;#8220;base type.&amp;#8221; Domains
+are described with a &amp;#8216;d&amp;#8217;, for, well, &lt;em&gt;domain&lt;/em&gt;. Arrays are &lt;em&gt;also&lt;/em&gt; modeled as types in the system catalog,
+described with &lt;code&gt;typcategory&lt;/code&gt; value &lt;code&gt;A&lt;/code&gt; for &amp;#8220;Array&amp;#8221; and through having their oid referenced by
+their scalar&amp;#8217;s row in column &lt;code&gt;typarray&lt;/code&gt;.
+Convention dictates that the array type&amp;#8217;s name will be the same as the scalar type&amp;#8217;s, but with an underscore&amp;nbsp;prepended.&lt;/p&gt;
+&lt;p&gt;All that&amp;#8217;s a mouthful. Let&amp;#8217;s just&amp;nbsp;look:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;scratch=# select
+    oid, typname, typtype, typcategory, typarray, typbasetype
+    from pg_type
+    where typname in (&amp;#39;text&amp;#39;, &amp;#39;required_text&amp;#39;, &amp;#39;_text&amp;#39;, &amp;#39;_required_text&amp;#39;);
+
+   oid   |    typname     | typtype | typcategory | typarray | typbasetype
+---------+----------------+---------+-------------+----------+-------------
+      25 | text           | b       | S           |     1009 |           0
+    1009 | _text          | b       | A           |        0 |           0
+ 2741346 | required_text  | d       | S           |  2741345 |          25
+ 2741345 | _required_text | b       | A           |        0 |           0
+(4 rows)
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Here we see a subset of the &lt;code&gt;pg_type&lt;/code&gt; descriptions for types &lt;code&gt;text&lt;/code&gt; and our domain
+&lt;code&gt;required_text&lt;/code&gt; plus their corresponding array types. The &lt;code&gt;required_text&lt;/code&gt; domain
+is described with &lt;code&gt;typtype&lt;/code&gt; value &amp;#8216;d,&amp;#8217; and references its base type&amp;#8217;s oid in the
+&lt;code&gt;typbasetype&lt;/code&gt; column. Being scalars supporting arrays, they name their array
+types by oid in the &lt;code&gt;typarray&lt;/code&gt; column: 1009 and 2741345.  The array types &lt;code&gt;_text&lt;/code&gt;
+and &lt;code&gt;_required_text&lt;/code&gt; are marked as arrays according to &lt;code&gt;typcategory&lt;/code&gt; value &amp;#8216;A&amp;#8217;
+(and through other &lt;code&gt;pg_type&lt;/code&gt; columns we&amp;#8217;re not interested in for the sake of this
+post). The oids for &lt;code&gt;required_text&lt;/code&gt; and &lt;code&gt;_required_test&lt;/code&gt; will
+be based on the state of your database cluster when you actually run the code, whereas
+the values for &lt;code&gt;text&lt;/code&gt; and &lt;code&gt;_text&lt;/code&gt;, being builtins, are well known and set up by &lt;code&gt;initdb&lt;/code&gt; when you
+initialized your&amp;nbsp;cluster.&lt;/p&gt;
+&lt;p&gt;(Why does the array type &lt;code&gt;_required_text&lt;/code&gt; end up having a &lt;em&gt;lower&lt;/em&gt; oid than its scalar type? Because
+the code for &lt;code&gt;CREATE TYPE ... AS DOMAIN&lt;/code&gt; in &lt;a href="https://github.com/postgres/postgres/blob/master/src/backend/commands/typecmds.c#L1033"&gt;/src/backend/commands/typecmds.c&amp;#8217;s &lt;code&gt;DefineDomain()&lt;/code&gt;&lt;/a&gt; creates the array type oid first since the scalar domain&amp;#8217;s type will need to forward reference&amp;nbsp;it.)&lt;/p&gt;
+&lt;p&gt;Array types don&amp;#8217;t have a corresponding &lt;code&gt;typarray&lt;/code&gt; value, because, well, PostgreSQL
+arrays are inherently multi-dimensional, and we don&amp;#8217;t want to have infinite
+recursion in the system&amp;nbsp;catalog.&lt;/p&gt;
+&lt;p&gt;Given the above schema, you may have an overview query projecting both the sender
+and all recipients by address along the lines&amp;nbsp;of:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;select
+    em.id,
+    em.subject,
+    sa.address as sender,
+    (select array_agg(ea.address)
+            from email_recipient e_r
+            join email_address ea
+                on (e_r.recipient_id = ea.id)
+            where e_r.email_id = em.id)
+        as recipients
+    from email em
+        join email_address sa
+            on em.sender_id = sa.id
+;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;whose results may be something&amp;nbsp;like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt; id |      subject      |           sender           |                 recipients
+----+-------------------+----------------------------+--------------------------------------------
+  1 | Anyone Out there? | joe@foo.com                | {mary@jane.com,majortom@space.control.com}
+  2 | Yup!              | majortom@space.control.com | {joe@foo.com,mary@jane.com}
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Excellent! Prior versions of PostgreSQL would tell&amp;nbsp;you:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;    ERROR:  could not find array type for data type required_text
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;which you&amp;#8217;d then probably solve through downcasting &lt;code&gt;ea.address&lt;/code&gt; to&amp;nbsp;text:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;...
+    (select array_agg(ea.address::text)
+...
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;to end up with a vanilla array of text and just move on. But no more need in &lt;span class="caps"&gt;PG&lt;/span&gt;&amp;nbsp;11!&lt;/p&gt;
+&lt;p&gt;But when embedding this same query into a client application (here I will use python and the psycopg2 driver), you
+are then met with a novel surprise &amp;#8212;- your application code does not recieve a beautiful array or list of strings
+like it would have if you had done that &lt;span class="caps"&gt;SQL&lt;/span&gt;-side downcast, but instead probably just a single string which includes
+both the array delimiting &lt;code&gt;{&lt;/code&gt; and &lt;code&gt;}&lt;/code&gt; characters as well as the interior&amp;nbsp;commas:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;psycopg2&lt;/span&gt;
+
+&lt;span class="n"&gt;con&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;connect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;dbname=scratch&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;cur&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cursor&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+
+&lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;execute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;select&lt;/span&gt;
+&lt;span class="s1"&gt;    em.id,&lt;/span&gt;
+&lt;span class="s1"&gt;    em.subject,&lt;/span&gt;
+&lt;span class="s1"&gt;    sa.address as sender,&lt;/span&gt;
+&lt;span class="s1"&gt;    (select array_agg(ea.address)&lt;/span&gt;
+&lt;span class="s1"&gt;            from email_recipient e_r&lt;/span&gt;
+&lt;span class="s1"&gt;            join email_address ea&lt;/span&gt;
+&lt;span class="s1"&gt;                on (e_r.recipient_id = ea.id)&lt;/span&gt;
+&lt;span class="s1"&gt;            where e_r.email_id = em.id)&lt;/span&gt;
+&lt;span class="s1"&gt;        as recipients&lt;/span&gt;
+&lt;span class="s1"&gt;    from email em&lt;/span&gt;
+&lt;span class="s1"&gt;        join email_address sa&lt;/span&gt;
+&lt;span class="s1"&gt;            on em.sender_id = sa.id&lt;/span&gt;
+&lt;span class="s1"&gt;&amp;#39;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;row&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;close&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;close&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Results:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;$ python /tmp/test.py
+&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;Anyone Out there?&amp;#39;&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;joe@foo.com&amp;#39;&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;{mary@jane.com,majortom@space.control.com}&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="m"&gt;2&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;Yup!&amp;#39;&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;majortom@space.control.com&amp;#39;&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;{joe@foo.com,mary@jane.com}&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;)&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Boo! What&amp;#8217;s with those big strings at the end instead of a list of individual addresses? And why did the individual
+&lt;code&gt;required_text&lt;/code&gt; values projected in the &lt;code&gt;sender&lt;/code&gt; column come across A-&lt;span class="caps"&gt;OK&lt;/span&gt;?
+What&amp;#8217;s going on? This isn&amp;#8217;t helpful at&amp;nbsp;all!&lt;/p&gt;
+&lt;h1&gt;Answer&lt;/h1&gt;
+&lt;p&gt;Ends up what is happening is a difference in how PostgreSQL 11 currently describes results containing
+arrays of domain versus results containing scalar domain values. Scalar domain values are described in
+result sets using &lt;em&gt;the underlying base type&amp;#8217;s oid&lt;/em&gt; since time immemorial, whilst the array of domain is being described
+with its &lt;em&gt;unique oid&lt;/em&gt; which your database driver and application most likely do not have a mapping
+to a native type&amp;nbsp;(yet).&lt;/p&gt;
+&lt;p&gt;Rephrased, the server is performing &lt;em&gt;type erasure&lt;/em&gt; in the client/server protocol for
+scalar domain projections, making their projected values be indistinguishable
+from those of the underlying base type. This is has been happening since
+PostgreSQL&amp;#8217;s support for domains for the ease of client applications / and &amp;#8216;simple&amp;#8217; drivers who need not concern
+themselves / differentiate between domain values and the underlying base types. This type erasure
+has popped up as a surprise and discussion point for the occassional user who wanted to use domains
+to trigger special client-side type mappings, but then find they cannot because registering the domain&amp;#8217;s
+oid with their driver ends up never getting tickled. Their solution is to then just go ahead and make
+a real type, but leveraging their implicit base type&amp;#8217;s input, output, operator class, etc. PostgreSQL&amp;nbsp;functions.&lt;/p&gt;
+&lt;p&gt;Let&amp;#8217;s peek into how these results are being presented by replacing the for loop
+over the results with one over the cursor&amp;#8217;s
+&lt;a href="http://initd.org/psycopg/docs/cursor.html#cursor.description"&gt;description&lt;/a&gt;:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;...
+for column in cur.description:
+    print(&amp;#39;Name: %s / oid: %d&amp;#39; % (column.name, column.type_code))
+...
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;and we&amp;nbsp;see:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;$ python /tmp/test.py
+Name: id / oid: &lt;span class="m"&gt;23&lt;/span&gt;
+Name: subject / oid: &lt;span class="m"&gt;25&lt;/span&gt;
+Name: sender / oid: &lt;span class="m"&gt;25&lt;/span&gt;
+Name: recipients / oid: &lt;span class="m"&gt;2741345&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Interesting! The scalar domain column &lt;code&gt;sender&lt;/code&gt; is &lt;em&gt;not&lt;/em&gt; described with the oid we observed in the &lt;code&gt;pg_types&lt;/code&gt; table
+(&lt;em&gt;2741346&lt;/em&gt;), but instead is presented to the client with the oid of its &lt;em&gt;base type, 25, corresponding to &lt;code&gt;text&lt;/code&gt;&lt;/em&gt;.
+The equivalent conversion is &lt;em&gt;not&lt;/em&gt; currently done for arrays of domains &amp;#8212; they&amp;#8217;re presented back to the
+client with their unadulterated
+&amp;#8220;array of domain&amp;#8221; oid, which, out of the box, your database client most likely won&amp;#8217;t know how to handle. Psycopg2
+defaults to presenting the value as a string when it doesn&amp;#8217;t know otherwise, so a single string with curlybraces and
+commas is handed back to the application code. I&amp;#8217;ve brought this &lt;a href="https://www.postgresql.org/message-id/50CCC519-6F51-470A-872B-8002F54AB92E%40jlr-photo.com"&gt;arguable asymmetry in how PostgreSQL treats
+returning domains to client applications&lt;/a&gt;
+up on pgsql-hackers, and it seems it will stay this way at least for PostgreSQL&amp;nbsp;11.&lt;/p&gt;
+&lt;p&gt;Fortunately, psycopg2 lets us register new type adaptors, and has a convienence function to create a type
+adaptor for an array type based upon the the type adaptor for the corresponding scalar type. So, with some
+lookups in both the system catalog as well as within the psycopg2 module, we can craft a flexible
+registration function which introspects into our database to see what domains we have, and to
+register their array type&amp;#8217;s oid to be handled equivalently to that of an array of the domain&amp;#8217;s
+base type. We&amp;#8217;ve only created a domain over text, but the following ought to handle domains over
+int or any other of the core PostgreSQL&amp;nbsp;types.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nn"&gt;psycopg2.extras&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nn"&gt;psycopg2.extensions&lt;/span&gt;
+
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;register_domain_array_types&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+
+    &lt;span class="n"&gt;cur&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cursor&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;cursor_factory&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extras&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;NamedTupleCursor&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="c1"&gt;# Learn user-created domain names, their array type&amp;#39;s oids, their&lt;/span&gt;
+    &lt;span class="c1"&gt;# base type&amp;#39;s oid&lt;/span&gt;
+    &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;execute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;        select&lt;/span&gt;
+&lt;span class="s1"&gt;            pgt.typname,        -- Name of this domain type,&lt;/span&gt;
+&lt;span class="s1"&gt;            pgt.typbasetype,    -- its base type&amp;#39;s oid,&lt;/span&gt;
+&lt;span class="s1"&gt;                                -- base type&amp;#39;s name,&lt;/span&gt;
+&lt;span class="s1"&gt;            pgt_base.typname as base_typname,&lt;/span&gt;
+&lt;span class="s1"&gt;            pgt.typarray       -- and its array type&amp;#39;s oid&lt;/span&gt;
+
+&lt;span class="s1"&gt;        from pg_catalog.pg_type pgt&lt;/span&gt;
+&lt;span class="s1"&gt;                -- Dig out the base type for the domain ...&lt;/span&gt;
+&lt;span class="s1"&gt;                join pg_catalog.pg_type pgt_base&lt;/span&gt;
+&lt;span class="s1"&gt;                    on (pgt.typbasetype = pgt_base.oid)&lt;/span&gt;
+&lt;span class="s1"&gt;        where&lt;/span&gt;
+&lt;span class="s1"&gt;            -- Domains only please!&lt;/span&gt;
+&lt;span class="s1"&gt;            pgt.typtype = &amp;#39;d&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;        &amp;#39;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;fetchall&lt;/span&gt;&lt;span class="p"&gt;():&lt;/span&gt;
+        &lt;span class="c1"&gt;# Get the psycopg type adaptor for the domain&amp;#39;s base type&amp;#39;s oid.&lt;/span&gt;
+        &lt;span class="n"&gt;base_type_adaptor&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;string_types&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;get&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;typbasetype&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+        &lt;span class="k"&gt;if&lt;/span&gt; &lt;span class="ow"&gt;not&lt;/span&gt; &lt;span class="n"&gt;base_type_adaptor&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+            &lt;span class="k"&gt;raise&lt;/span&gt; &lt;span class="ne"&gt;Exception&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;Unknown type adaptor for &lt;/span&gt;&lt;span class="si"&gt;%s&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;
+                            &lt;span class="s1"&gt;&amp;#39; for domain array type &lt;/span&gt;&lt;span class="si"&gt;%s&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt;
+                            &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;base_typname&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt; &lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;typname&lt;/span&gt;&lt;span class="p"&gt;))&lt;/span&gt;
+
+        &lt;span class="c1"&gt;# Create new psycopg-side array type(converter) ...&lt;/span&gt;
+        &lt;span class="n"&gt;array_type&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;new_array_type&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;
+                        &lt;span class="c1"&gt;# oids to trigger use of this typecoverter.&lt;/span&gt;
+                        &lt;span class="c1"&gt;# The array&amp;#39;s oid only please.&lt;/span&gt;
+                        &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;typarray&lt;/span&gt;&lt;span class="p"&gt;,),&lt;/span&gt;
+
+                        &lt;span class="c1"&gt;# Name for this type: let&amp;#39;s just tack &amp;#39;[]&amp;#39;&lt;/span&gt;
+                        &lt;span class="c1"&gt;# onto the domain&amp;#39;s name&lt;/span&gt;
+                        &lt;span class="n"&gt;c&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;typname&lt;/span&gt; &lt;span class="o"&gt;+&lt;/span&gt; &lt;span class="s1"&gt;&amp;#39;[]&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;,&lt;/span&gt;
+
+                        &lt;span class="c1"&gt;# Typeconverter for the scalar type. Let&amp;#39;s use the one for the&lt;/span&gt;
+                        &lt;span class="c1"&gt;# domain&amp;#39;s base type!&lt;/span&gt;
+                        &lt;span class="n"&gt;base_type_adaptor&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+        &lt;span class="c1"&gt;# ... and then register it. Done!&lt;/span&gt;
+        &lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extensions&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;register_type&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;array_type&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+    &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;close&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So, after making a call to that routine, and expecting the &lt;code&gt;recipients&lt;/code&gt; projection to now be a &lt;strong&gt;list&lt;/strong&gt; of&amp;nbsp;strings:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;&lt;span class="kn"&gt;import&lt;/span&gt; &lt;span class="nn"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nn"&gt;psycopg2.extras&lt;/span&gt;&lt;span class="o"&gt;,&lt;/span&gt; &lt;span class="nn"&gt;psycopg2.extensions&lt;/span&gt;
+
+&lt;span class="k"&gt;def&lt;/span&gt; &lt;span class="nf"&gt;register_domain_array_types&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="p"&gt;):&lt;/span&gt;
+    &lt;span class="o"&gt;...&lt;/span&gt;
+
+&lt;span class="n"&gt;con&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;connect&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;dbname=scratch&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+&lt;span class="n"&gt;register_domain_array_types&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;cur&lt;/span&gt; &lt;span class="o"&gt;=&lt;/span&gt; &lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;cursor&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;cursor_factory&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="n"&gt;psycopg2&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;extras&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;NamedTupleCursor&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;execute&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;#39;&amp;#39;&lt;/span&gt;
+&lt;span class="s1"&gt;select&lt;/span&gt;
+&lt;span class="s1"&gt;    em.id,&lt;/span&gt;
+&lt;span class="s1"&gt;    em.subject,&lt;/span&gt;
+&lt;span class="s1"&gt;    sa.address as sender,&lt;/span&gt;
+&lt;span class="s1"&gt;    (select array_agg(ea.address)&lt;/span&gt;
+&lt;span class="s1"&gt;            from email_recipient e_r&lt;/span&gt;
+&lt;span class="s1"&gt;            join email_address ea&lt;/span&gt;
+&lt;span class="s1"&gt;                on (e_r.recipient_id = ea.id)&lt;/span&gt;
+&lt;span class="s1"&gt;            where e_r.email_id = em.id)&lt;/span&gt;
+&lt;span class="s1"&gt;        as recipients&lt;/span&gt;
+&lt;span class="s1"&gt;    from email em&lt;/span&gt;
+&lt;span class="s1"&gt;        join email_address sa&lt;/span&gt;
+&lt;span class="s1"&gt;            on em.sender_id = sa.id&lt;/span&gt;
+&lt;span class="s1"&gt;&amp;#39;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;row&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+    &lt;span class="k"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+    &lt;span class="k"&gt;for&lt;/span&gt; &lt;span class="n"&gt;recip&lt;/span&gt; &lt;span class="ow"&gt;in&lt;/span&gt; &lt;span class="n"&gt;row&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;recipients&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;
+        &lt;span class="k"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;    Recipient: &lt;/span&gt;&lt;span class="si"&gt;%s&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&lt;/span&gt; &lt;span class="o"&gt;%&lt;/span&gt; &lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="n"&gt;recip&lt;/span&gt;&lt;span class="p"&gt;,))&lt;/span&gt;
+    &lt;span class="k"&gt;print&lt;/span&gt;&lt;span class="p"&gt;(&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;&amp;#39;&lt;/span&gt;&lt;span class="p"&gt;)&lt;/span&gt;
+
+&lt;span class="n"&gt;cur&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;close&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;span class="n"&gt;con&lt;/span&gt;&lt;span class="o"&gt;.&lt;/span&gt;&lt;span class="n"&gt;close&lt;/span&gt;&lt;span class="p"&gt;()&lt;/span&gt;
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;Now gives us something we&amp;nbsp;like:&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;pre&gt;&lt;span&gt;&lt;/span&gt;$ python array_type_example.py
+Record&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;1&lt;/span&gt;, &lt;span class="nv"&gt;subject&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;Anyone Out there?&amp;#39;&lt;/span&gt;, &lt;span class="nv"&gt;sender&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;joe@foo.com&amp;#39;&lt;/span&gt;, &lt;span class="nv"&gt;recipients&lt;/span&gt;&lt;span class="o"&gt;=[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;mary@jane.com&amp;#39;&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;majortom@space.control.com&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;])&lt;/span&gt;
+    Recipient: mary@jane.com
+    Recipient: majortom@space.control.com
+
+Record&lt;span class="o"&gt;(&lt;/span&gt;&lt;span class="nv"&gt;id&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="m"&gt;2&lt;/span&gt;, &lt;span class="nv"&gt;subject&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;Yup!&amp;#39;&lt;/span&gt;, &lt;span class="nv"&gt;sender&lt;/span&gt;&lt;span class="o"&gt;=&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;majortom@space.control.com&amp;#39;&lt;/span&gt;, &lt;span class="nv"&gt;recipients&lt;/span&gt;&lt;span class="o"&gt;=[&lt;/span&gt;&lt;span class="s1"&gt;&amp;#39;joe@foo.com&amp;#39;&lt;/span&gt;, &lt;span class="s1"&gt;&amp;#39;mary@jane.com&amp;#39;&lt;/span&gt;&lt;span class="o"&gt;])&lt;/span&gt;
+    Recipient: joe@foo.com
+    Recipient: mary@jane.com
+
+$
+&lt;/pre&gt;&lt;/div&gt;
+
+
+&lt;p&gt;So, research your own driver&amp;#8217;s custom type registration capability, and
+make use of a post-connection setup function to scrape the system catalog
+for domains and their array type&amp;#8217;s oids to make full use of domain arrays
+at the client&amp;nbsp;side!&lt;/p&gt;
+&lt;p&gt;Next time I&amp;#8217;ll augment and generalize this setup function to educate
+psycopg2 about custom composite types and show how useful they can be
+when writing json&amp;nbsp;microservices.&lt;/p&gt;
+&lt;p&gt;References:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href="http://initd.org/psycopg/docs/extensions.html#psycopg2.extensions.new_array_type"&gt;Documentation for psycopg2 extensions &lt;code&gt;new_array_type()&lt;/code&gt; and &lt;code&gt;register_type()&lt;/code&gt;.&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://www.postgresql.org/docs/11/catalog-pg-type.html"&gt;PostgreSQL 11&amp;#8217;s &lt;code&gt;pg_type&lt;/code&gt; system catalog definition and&amp;nbsp;documentation.&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><category term="Python"></category><category term="Psycopg2"></category><category term="PostgreSQL"></category></entry></feed>
