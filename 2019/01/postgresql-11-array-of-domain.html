@@ -74,6 +74,7 @@
           <li><a href="https://github.com/jlrobins" role="presentation">Personal Github</a></li>
           <li><a href="http://jlr-photo.com/" role="presentation">Photo Site</a></li>
 
+              <li role="presentation"><a href="../../category/misc">misc</a></li>
               <li role="presentation"><a href="../../category/postgresql">PostgreSQL</a></li>
               <li class="nav-postgresql-python active" role="presentation"><a href="../../category/postgresql-python">PostgreSQL-Python</a></li>
 
@@ -128,33 +129,33 @@ letting you express a set of constraints in one place, then reference them in as
 datatypes as needed with much less repetition or copy/paste&nbsp;errors.</p>
 <p>For example, given this simplified subset of a schema making reference to a domain <code>required_text</code> over <code>text</code>
 ensuring that the value is nonempty, not null, as well as has no leading / trailing&nbsp;whitespace:</p>
-<div class="highlight"><pre><span></span>create domain required_text text
-    check (trim(value) = value
-        and length(value) &gt; 0) not null;
+<div class="highlight"><pre><span></span><span class="k">create</span> <span class="k">domain</span> <span class="n">required_text</span> <span class="nb">text</span>
+    <span class="k">check</span> <span class="p">(</span><span class="k">trim</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">=</span> <span class="n">value</span>
+        <span class="k">and</span> <span class="k">length</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="k">not</span> <span class="k">null</span><span class="p">;</span>
 
-create table email_address
-(
-    id serial primary key,
-    address required_text
-        -- Not a production quality email constraint, but...
-        check (address like &#39;%@%&#39;)
-);
+<span class="k">create</span> <span class="k">table</span> <span class="n">email_address</span>
+<span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">address</span> <span class="n">required_text</span>
+        <span class="c1">-- Not a production quality email constraint, but...</span>
+        <span class="k">check</span> <span class="p">(</span><span class="n">address</span> <span class="k">like</span> <span class="s1">&#39;%@%&#39;</span><span class="p">)</span>
+<span class="p">);</span>
 
-create table email(
-    id serial primary key,
-    sender_id int
-        references email_address,
-    subject text
-    --  ...
-);
+<span class="k">create</span> <span class="k">table</span> <span class="n">email</span><span class="p">(</span>
+    <span class="n">id</span> <span class="nb">serial</span> <span class="k">primary</span> <span class="k">key</span><span class="p">,</span>
+    <span class="n">sender_id</span> <span class="nb">int</span>
+        <span class="k">references</span> <span class="n">email_address</span><span class="p">,</span>
+    <span class="n">subject</span> <span class="nb">text</span>
+    <span class="c1">--  ...</span>
+<span class="p">);</span>
 
-create table email_recipient (
-    email_id int not null
-        references email,
-    recipient_id int not null
-        references email_address,
-    primary key (email_id, recipient_id)
-);
+<span class="k">create</span> <span class="k">table</span> <span class="n">email_recipient</span> <span class="p">(</span>
+    <span class="n">email_id</span> <span class="nb">int</span> <span class="k">not</span> <span class="k">null</span>
+        <span class="k">references</span> <span class="n">email</span><span class="p">,</span>
+    <span class="n">recipient_id</span> <span class="nb">int</span> <span class="k">not</span> <span class="k">null</span>
+        <span class="k">references</span> <span class="n">email_address</span><span class="p">,</span>
+    <span class="k">primary</span> <span class="k">key</span> <span class="p">(</span><span class="n">email_id</span><span class="p">,</span> <span class="n">recipient_id</span><span class="p">)</span>
+<span class="p">);</span>
 </pre></div>
 
 
@@ -172,18 +173,18 @@ described with <code>typcategory</code> value <code>A</code> for &#8220;Array&#8
 their scalar&#8217;s row in column <code>typarray</code>.
 Convention dictates that the array type&#8217;s name will be the same as the scalar type&#8217;s, but with an underscore&nbsp;prepended.</p>
 <p>All that&#8217;s a mouthful. Let&#8217;s just&nbsp;look:</p>
-<div class="highlight"><pre><span></span>scratch=# select
-    oid, typname, typtype, typcategory, typarray, typbasetype
-    from pg_type
-    where typname in (&#39;text&#39;, &#39;required_text&#39;, &#39;_text&#39;, &#39;_required_text&#39;);
+<div class="highlight"><pre><span></span><span class="n">scratch</span><span class="o">=#</span> <span class="k">select</span>
+    <span class="n">oid</span><span class="p">,</span> <span class="n">typname</span><span class="p">,</span> <span class="n">typtype</span><span class="p">,</span> <span class="n">typcategory</span><span class="p">,</span> <span class="n">typarray</span><span class="p">,</span> <span class="n">typbasetype</span>
+    <span class="k">from</span> <span class="n">pg_type</span>
+    <span class="k">where</span> <span class="n">typname</span> <span class="k">in</span> <span class="p">(</span><span class="s1">&#39;text&#39;</span><span class="p">,</span> <span class="s1">&#39;required_text&#39;</span><span class="p">,</span> <span class="s1">&#39;_text&#39;</span><span class="p">,</span> <span class="s1">&#39;_required_text&#39;</span><span class="p">);</span>
 
-   oid   |    typname     | typtype | typcategory | typarray | typbasetype
----------+----------------+---------+-------------+----------+-------------
-      25 | text           | b       | S           |     1009 |           0
-    1009 | _text          | b       | A           |        0 |           0
- 2741346 | required_text  | d       | S           |  2741345 |          25
- 2741345 | _required_text | b       | A           |        0 |           0
-(4 rows)
+   <span class="n">oid</span>   <span class="o">|</span>    <span class="n">typname</span>     <span class="o">|</span> <span class="n">typtype</span> <span class="o">|</span> <span class="n">typcategory</span> <span class="o">|</span> <span class="n">typarray</span> <span class="o">|</span> <span class="n">typbasetype</span>
+<span class="c1">---------+----------------+---------+-------------+----------+-------------</span>
+      <span class="mi">25</span> <span class="o">|</span> <span class="nb">text</span>           <span class="o">|</span> <span class="n">b</span>       <span class="o">|</span> <span class="n">S</span>           <span class="o">|</span>     <span class="mi">1009</span> <span class="o">|</span>           <span class="mi">0</span>
+    <span class="mi">1009</span> <span class="o">|</span> <span class="n">_text</span>          <span class="o">|</span> <span class="n">b</span>       <span class="o">|</span> <span class="n">A</span>           <span class="o">|</span>        <span class="mi">0</span> <span class="o">|</span>           <span class="mi">0</span>
+ <span class="mi">2741346</span> <span class="o">|</span> <span class="n">required_text</span>  <span class="o">|</span> <span class="n">d</span>       <span class="o">|</span> <span class="n">S</span>           <span class="o">|</span>  <span class="mi">2741345</span> <span class="o">|</span>          <span class="mi">25</span>
+ <span class="mi">2741345</span> <span class="o">|</span> <span class="n">_required_text</span> <span class="o">|</span> <span class="n">b</span>       <span class="o">|</span> <span class="n">A</span>           <span class="o">|</span>        <span class="mi">0</span> <span class="o">|</span>           <span class="mi">0</span>
+<span class="p">(</span><span class="mi">4</span> <span class="k">rows</span><span class="p">)</span>
 </pre></div>
 
 
@@ -205,40 +206,40 @@ arrays are inherently multi-dimensional, and we don&#8217;t want to have infinit
 recursion in the system&nbsp;catalog.</p>
 <p>Given the above schema, you may have an overview query projecting both the sender
 and all recipients by address along the lines&nbsp;of:</p>
-<div class="highlight"><pre><span></span>select
-    em.id,
-    em.subject,
-    sa.address as sender,
-    (select array_agg(ea.address)
-            from email_recipient e_r
-            join email_address ea
-                on (e_r.recipient_id = ea.id)
-            where e_r.email_id = em.id)
-        as recipients
-    from email em
-        join email_address sa
-            on em.sender_id = sa.id
-;
+<div class="highlight"><pre><span></span><span class="k">select</span>
+    <span class="n">em</span><span class="p">.</span><span class="n">id</span><span class="p">,</span>
+    <span class="n">em</span><span class="p">.</span><span class="n">subject</span><span class="p">,</span>
+    <span class="n">sa</span><span class="p">.</span><span class="n">address</span> <span class="k">as</span> <span class="n">sender</span><span class="p">,</span>
+    <span class="p">(</span><span class="k">select</span> <span class="n">array_agg</span><span class="p">(</span><span class="n">ea</span><span class="p">.</span><span class="n">address</span><span class="p">)</span>
+            <span class="k">from</span> <span class="n">email_recipient</span> <span class="n">e_r</span>
+            <span class="k">join</span> <span class="n">email_address</span> <span class="n">ea</span>
+                <span class="k">on</span> <span class="p">(</span><span class="n">e_r</span><span class="p">.</span><span class="n">recipient_id</span> <span class="o">=</span> <span class="n">ea</span><span class="p">.</span><span class="n">id</span><span class="p">)</span>
+            <span class="k">where</span> <span class="n">e_r</span><span class="p">.</span><span class="n">email_id</span> <span class="o">=</span> <span class="n">em</span><span class="p">.</span><span class="n">id</span><span class="p">)</span>
+        <span class="k">as</span> <span class="n">recipients</span>
+    <span class="k">from</span> <span class="n">email</span> <span class="n">em</span>
+        <span class="k">join</span> <span class="n">email_address</span> <span class="n">sa</span>
+            <span class="k">on</span> <span class="n">em</span><span class="p">.</span><span class="n">sender_id</span> <span class="o">=</span> <span class="n">sa</span><span class="p">.</span><span class="n">id</span>
+<span class="p">;</span>
 </pre></div>
 
 
 <p>whose results may be something&nbsp;like:</p>
-<div class="highlight"><pre><span></span> id |      subject      |           sender           |                 recipients
-----+-------------------+----------------------------+--------------------------------------------
-  1 | Anyone Out there? | joe@foo.com                | {mary@jane.com,majortom@space.control.com}
-  2 | Yup!              | majortom@space.control.com | {joe@foo.com,mary@jane.com}
+<div class="highlight"><pre><span></span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="o">|</span><span class="w">      </span><span class="n">subject</span><span class="w">      </span><span class="o">|</span><span class="w">           </span><span class="n">sender</span><span class="w">           </span><span class="o">|</span><span class="w">                 </span><span class="n">recipients</span><span class="w"></span>
+<span class="c1">----+-------------------+----------------------------+--------------------------------------------</span>
+<span class="w">  </span><span class="mi">1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Anyone</span><span class="w"> </span><span class="k">Out</span><span class="w"> </span><span class="n">there</span><span class="vm">?</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">joe</span><span class="nv">@foo</span><span class="p">.</span><span class="n">com</span><span class="w">                </span><span class="o">|</span><span class="w"> </span><span class="err">{</span><span class="n">mary</span><span class="nv">@jane</span><span class="p">.</span><span class="n">com</span><span class="p">,</span><span class="n">majortom</span><span class="nv">@space</span><span class="p">.</span><span class="n">control</span><span class="p">.</span><span class="n">com</span><span class="err">}</span><span class="w"></span>
+<span class="w">  </span><span class="mi">2</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">Yup</span><span class="err">!</span><span class="w">              </span><span class="o">|</span><span class="w"> </span><span class="n">majortom</span><span class="nv">@space</span><span class="p">.</span><span class="n">control</span><span class="p">.</span><span class="n">com</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="err">{</span><span class="n">joe</span><span class="nv">@foo</span><span class="p">.</span><span class="n">com</span><span class="p">,</span><span class="n">mary</span><span class="nv">@jane</span><span class="p">.</span><span class="n">com</span><span class="err">}</span><span class="w"></span>
 </pre></div>
 
 
 <p>Excellent! Prior versions of PostgreSQL would tell&nbsp;you:</p>
-<div class="highlight"><pre><span></span>    ERROR:  could not find array type for data type required_text
+<div class="highlight"><pre><span></span>    <span class="nv">ERROR</span>:  <span class="nv">could</span> <span class="nv">not</span> <span class="nv">find</span> <span class="nv">array</span> <span class="nv">type</span> <span class="k">for</span> <span class="nv">data</span> <span class="nv">type</span> <span class="nv">required_text</span>
 </pre></div>
 
 
 <p>which you&#8217;d then probably solve through downcasting <code>ea.address</code> to&nbsp;text:</p>
-<div class="highlight"><pre><span></span>...
-    (select array_agg(ea.address::text)
-...
+<div class="highlight"><pre><span></span><span class="p">...</span>
+    <span class="p">(</span><span class="k">select</span> <span class="n">array_agg</span><span class="p">(</span><span class="n">ea</span><span class="p">.</span><span class="n">address</span><span class="p">::</span><span class="nb">text</span><span class="p">)</span>
+<span class="p">...</span>
 </pre></div>
 
 
@@ -305,8 +306,8 @@ a real type, but leveraging their implicit base type&#8217;s input, output, oper
 over the results with one over the cursor&#8217;s
 <a href="http://initd.org/psycopg/docs/cursor.html#cursor.description">description</a>:</p>
 <div class="highlight"><pre><span></span>...
-for column in cur.description:
-    print(&#39;Name: %s / oid: %d&#39; % (column.name, column.type_code))
+<span class="k">for</span> <span class="nv">column</span> <span class="nv">in</span> <span class="nv">cur</span>.<span class="nv">description</span>:
+    <span class="nv">print</span><span class="ss">(</span><span class="s1">&#39;</span><span class="s">Name: %s / oid: %d</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="ss">(</span><span class="nv">column</span>.<span class="nv">name</span>, <span class="nv">column</span>.<span class="nv">type_code</span><span class="ss">))</span>
 ...
 </pre></div>
 

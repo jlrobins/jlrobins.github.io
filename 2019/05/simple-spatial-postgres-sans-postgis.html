@@ -73,6 +73,7 @@
           <li><a href="https://github.com/jlrobins" role="presentation">Personal Github</a></li>
           <li><a href="http://jlr-photo.com/" role="presentation">Photo Site</a></li>
 
+              <li role="presentation"><a href="../../category/misc">misc</a></li>
               <li class="nav-postgresql active" role="presentation"><a href="../../category/postgresql">PostgreSQL</a></li>
               <li role="presentation"><a href="../../category/postgresql-python">PostgreSQL-Python</a></li>
 
@@ -338,8 +339,7 @@
 
 <p>It did so by performing a <strong>parallel sequential scan</strong> &#8212; splitting the table up into chunks (2 in this case), then having workers filter every row in each assigned chunk against the operator. That is, it examined all 1M rows in the table. Boo! <em>Inefficient!</em></p>
 <p>We can make this efficient using the <em>same</em> technology PostGIS would: a <a href="https://www.postgresql.org/docs/current/indexes-types.html">space-partitioning GiST index</a>. In the case of <span class="caps">SP</span>-GiST indexing the <code>point</code> type, we will create a multi-dimensional index similar to an <a href="https://en.wikipedia.org/wiki/R-tree">R-tree</a>, which optimizes queries for multi-dimensional datatypes.
-<em>(To be more precise, a space-partitioning quad tree is created
-in PostgreSQL&#8217;s <a href="https://github.com/postgres/postgres/blob/master/src/backend/utils/adt/geo_spgist.c">src/backend/utils/adt/geo_spgist.c</a>)</em></p>
+<em>(To be more precise, a space-partitioning quad tree is created by PostgreSQL&#8217;s <a href="https://github.com/postgres/postgres/blob/master/src/backend/utils/adt/geo_spgist.c">src/backend/utils/adt/geo_spgist.c</a>)</em></p>
 <div class="highlight"><pre><span></span><span class="gp">poor_gis=#</span> <span class="k">create</span> <span class="k">index</span> <span class="n">image_geocode_point_idx</span> <span class="k">on</span> <span class="n">image</span> <span class="k">using</span> <span class="n">gist</span><span class="p">(</span><span class="n">geocode_point</span><span class="p">);</span>
 <span class="go">CREATE INDEX</span>
 </pre></div>
@@ -587,15 +587,15 @@ in PostgreSQL&#8217;s <a href="https://github.com/postgres/postgres/blob/master/
 
 
 <p><strong>Booyah!</strong> Same order of magnitude as using the (wrong) Euclidean distance comparison! Our downside is that we&#8217;ve now got two different indices to store and update, plus a very different query style for <span class="caps">KNN</span> than we have for our bounding-box query. For these 1M rows, the indexes weigh&nbsp;&#8230;</p>
-<div class="highlight"><pre><span></span># select relname, pg_size_pretty(pg_relation_size(oid))
-  from pg_class
-  where relname like &#39;image_geocode%&#39;;
+<div class="highlight"><pre><span></span><span class="o">#</span> <span class="k">select</span> <span class="n">relname</span><span class="p">,</span> <span class="n">pg_size_pretty</span><span class="p">(</span><span class="n">pg_relation_size</span><span class="p">(</span><span class="n">oid</span><span class="p">))</span>
+  <span class="k">from</span> <span class="n">pg_class</span>
+  <span class="k">where</span> <span class="n">relname</span> <span class="k">like</span> <span class="s1">&#39;image_geocode%&#39;</span><span class="p">;</span>
 
-         relname         | pg_size_pretty
--------------------------+----------------
- image_geocode_as_cube   | 83 MB
- image_geocode_point_idx | 71 MB
-(2 rows)
+         <span class="n">relname</span>         <span class="o">|</span> <span class="n">pg_size_pretty</span>
+<span class="c1">-------------------------+----------------</span>
+ <span class="n">image_geocode_as_cube</span>   <span class="o">|</span> <span class="mi">83</span> <span class="n">MB</span>
+ <span class="n">image_geocode_point_idx</span> <span class="o">|</span> <span class="mi">71</span> <span class="n">MB</span>
+<span class="p">(</span><span class="mi">2</span> <span class="k">rows</span><span class="p">)</span>
 </pre></div>
 
 
